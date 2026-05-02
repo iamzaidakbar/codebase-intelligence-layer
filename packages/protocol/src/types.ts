@@ -43,5 +43,11 @@ export interface IndexStatus {
   filesTotal: number;
   symbolsTotal: number;
   edgesTotal: number;
+  embeddingsTotal: number;
   lastError?: string;
+}
+
+export interface ScoredNode {
+  node: GraphNode;
+  score: number;
 }

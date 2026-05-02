@@ -15,8 +15,6 @@ export interface ParseResult {
 
 const KIND_MAP: Record<string, NodeKind | undefined> = {
   function_declaration: 'function',
-  function_expression: 'function',
-  arrow_function: 'function',
   generator_function_declaration: 'function',
   method_definition: 'method',
   class_declaration: 'class',
@@ -28,7 +26,7 @@ const KIND_MAP: Record<string, NodeKind | undefined> = {
 
 const fileNodeId = (filePath: string): string => `file:${filePath}`;
 
-const symbolId = (
+export const symbolId = (
   kind: NodeKind,
   filePath: string,
   name: string,
@@ -46,9 +44,25 @@ const firstLineSignature = (text: string): string | undefined => {
   return line.length > 200 ? line.slice(0, 197) + '...' : line;
 };
 
-const getName = (node: Parser.SyntaxNode): string | undefined => {
-  const named = node.childForFieldName('name');
-  return named?.text;
+const getName = (node: Parser.SyntaxNode): string | undefined =>
+  node.childForFieldName('name')?.text;
+
+/** Detect `const foo = () => {}` / `const foo = function() {}` and similar
+ *  binding patterns so the function gets a real name. */
+const variableBoundCallable = (
+  declarator: Parser.SyntaxNode,
+): { name: string; valueNode: Parser.SyntaxNode } | undefined => {
+  const nameNode = declarator.childForFieldName('name');
+  const valueNode = declarator.childForFieldName('value');
+  if (!nameNode || !valueNode) return undefined;
+  if (nameNode.type !== 'identifier') return undefined;
+  if (
+    valueNode.type !== 'arrow_function' &&
+    valueNode.type !== 'function_expression'
+  ) {
+    return undefined;
+  }
+  return { name: nameNode.text, valueNode };
 };
 
 export const parseFile = (filePath: string, source: string): ParseResult => {
@@ -70,34 +84,61 @@ export const parseFile = (filePath: string, source: string): ParseResult => {
     contentHash: hash(source),
   });
 
+  const emitSymbol = (
+    kind: NodeKind,
+    name: string,
+    bodyNode: Parser.SyntaxNode,
+    anchorLine: number,
+  ): void => {
+    const id = symbolId(kind, filePath, name, anchorLine);
+    const text = source.slice(bodyNode.startIndex, bodyNode.endIndex);
+    nodes.push({
+      id,
+      kind,
+      name,
+      filePath,
+      startLine: anchorLine,
+      endLine: bodyNode.endPosition.row,
+      signature: firstLineSignature(text),
+      contentHash: hash(text),
+    });
+    edges.push({
+      id: edgeId(fileId, 'contains', id),
+      src: fileId,
+      dst: id,
+      kind: 'contains',
+    });
+  };
+
+  /** When true, the visitor skips the given node id (used to avoid double-emitting
+   *  an arrow_function that's already been counted via its variable binding). */
+  const skipNodes = new Set<number>();
+
   const visit = (node: Parser.SyntaxNode): void => {
-    // Symbols
+    if (skipNodes.has(node.id)) {
+      // Still recurse — there may be nested callables inside.
+      for (let i = 0; i < node.namedChildCount; i++) {
+        const child = node.namedChild(i);
+        if (child) visit(child);
+      }
+      return;
+    }
+
+    // Variable-bound callable: `const foo = () => {...}`
+    if (node.type === 'variable_declarator') {
+      const bound = variableBoundCallable(node);
+      if (bound) {
+        emitSymbol('function', bound.name, node, node.startPosition.row);
+        skipNodes.add(bound.valueNode.id);
+      }
+    }
+
     const kind = KIND_MAP[node.type];
     if (kind) {
       const name = getName(node) ?? '<anonymous>';
-      const line = node.startPosition.row;
-      const id = symbolId(kind, filePath, name, line);
-      const text = source.slice(node.startIndex, node.endIndex);
-      nodes.push({
-        id,
-        kind,
-        name,
-        filePath,
-        startLine: line,
-        endLine: node.endPosition.row,
-        signature: firstLineSignature(text),
-        contentHash: hash(text),
-      });
-      edges.push({
-        id: edgeId(fileId, 'contains', id),
-        src: fileId,
-        dst: id,
-        kind: 'contains',
-      });
+      emitSymbol(kind, name, node, node.startPosition.row);
     }
 
-    // Imports — phase 0 records the raw source string as the dst.
-    // Resolution to a concrete file node happens in phase 1.
     if (node.type === 'import_statement') {
       const sourceField = node.childForFieldName('source');
       if (sourceField) {

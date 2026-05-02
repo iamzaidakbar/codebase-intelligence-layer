@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 3;
 
 const MIGRATIONS: string[] = [
   // v1 -> initial schema
@@ -26,6 +26,7 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_nodes_file ON nodes(file_path);
   CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
   CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
+  CREATE INDEX IF NOT EXISTS idx_nodes_content_hash ON nodes(content_hash);
 
   CREATE TABLE IF NOT EXISTS edges (
     id TEXT PRIMARY KEY,
@@ -37,6 +38,30 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src, kind);
   CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst, kind);
   CREATE INDEX IF NOT EXISTS idx_edges_src_file ON edges(src_file);
+  `,
+  // v2 -> content-addressed embeddings
+  `
+  CREATE TABLE IF NOT EXISTS embeddings (
+    content_hash TEXT NOT NULL,
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    vector BLOB NOT NULL,
+    embedded_at INTEGER NOT NULL,
+    PRIMARY KEY (content_hash, model)
+  );
+  CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);
+  `,
+  // v3 -> content-addressed LLM summaries
+  `
+  CREATE TABLE IF NOT EXISTS summaries (
+    content_hash TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    generated_at INTEGER NOT NULL,
+    PRIMARY KEY (content_hash, model, prompt_version)
+  );
+  CREATE INDEX IF NOT EXISTS idx_summaries_model ON summaries(model);
   `,
 ];
 
