@@ -1,0 +1,171 @@
+{
+  "name": "cil-extension",
+  "displayName": "Codebase Intelligence Layer",
+  "description": "Continuously indexed structural + semantic graph of your codebase, with grounded NL queries.",
+  "version": "0.4.0",
+  "private": true,
+  "publisher": "cil",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=20.0.0"
+  },
+  "main": "./dist/extension.js",
+  "categories": ["Programming Languages", "Visualization"],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "workspaceContains:**/*.ts",
+    "workspaceContains:**/*.tsx"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "cil.refreshIndex",
+        "title": "CIL: Refresh Index",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "cil.showGraph",
+        "title": "CIL: Show Graph",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "cil.findCallersAtCursor",
+        "title": "CIL: Find Callers of Symbol at Cursor"
+      },
+      {
+        "command": "cil.findCalleesAtCursor",
+        "title": "CIL: Find Callees of Symbol at Cursor"
+      },
+      {
+        "command": "cil.explain",
+        "title": "CIL: Explain (Natural Language Query)"
+      },
+      {
+        "command": "cil.impactAtCursor",
+        "title": "CIL: Analyze Impact of Symbol at Cursor"
+      },
+      {
+        "command": "cil.traceFlowAtCursor",
+        "title": "CIL: Trace Call Flow from Symbol at Cursor"
+      },
+      {
+        "command": "cil.openNode",
+        "title": "CIL: Open Symbol",
+        "enablement": "false"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cil",
+          "title": "Codebase Intelligence",
+          "icon": "$(symbol-namespace)"
+        }
+      ]
+    },
+    "views": {
+      "cil": [
+        {
+          "id": "cil.symbols",
+          "name": "Symbols",
+          "icon": "$(symbol-class)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "cil.refreshIndex",
+          "when": "view == cil.symbols",
+          "group": "navigation"
+        },
+        {
+          "command": "cil.showGraph",
+          "when": "view == cil.symbols",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "cil.findCallersAtCursor",
+          "group": "navigation@1",
+          "when": "editorLangId =~ /^(typescript|typescriptreact|javascript|javascriptreact)$/"
+        },
+        {
+          "command": "cil.findCalleesAtCursor",
+          "group": "navigation@2",
+          "when": "editorLangId =~ /^(typescript|typescriptreact|javascript|javascriptreact)$/"
+        },
+        {
+          "command": "cil.impactAtCursor",
+          "group": "navigation@3",
+          "when": "editorLangId =~ /^(typescript|typescriptreact|javascript|javascriptreact)$/"
+        },
+        {
+          "command": "cil.traceFlowAtCursor",
+          "group": "navigation@4",
+          "when": "editorLangId =~ /^(typescript|typescriptreact|javascript|javascriptreact)$/"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Codebase Intelligence",
+      "properties": {
+        "cil.embedding.provider": {
+          "type": "string",
+          "enum": ["none", "hash", "ollama"],
+          "default": "hash",
+          "description": "Embedding provider for semantic search. 'hash' is dependency-free but low quality; 'ollama' requires a local Ollama server."
+        },
+        "cil.embedding.model": {
+          "type": "string",
+          "default": "nomic-embed-text",
+          "description": "Model name (used by ollama provider)."
+        },
+        "cil.embedding.url": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server URL."
+        },
+        "cil.llm.provider": {
+          "type": "string",
+          "enum": ["none", "mock", "anthropic"],
+          "default": "none",
+          "description": "LLM provider for summaries and explain. 'anthropic' requires ANTHROPIC_API_KEY in env."
+        },
+        "cil.llm.model": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Anthropic model id."
+        },
+        "cil.codeLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show caller/callee CodeLens above declarations."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@cil/daemon": "workspace:*",
+    "@cil/protocol": "workspace:*",
+    "cytoscape": "^3.30.2",
+    "vscode-jsonrpc": "^8.2.1"
+  },
+  "devDependencies": {
+    "@types/cytoscape": "^3.21.8",
+    "@types/node": "^22.7.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}

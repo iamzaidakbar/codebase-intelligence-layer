@@ -4,7 +4,9 @@ import {
   PROTOCOL_VERSION,
   RPC,
   type ExplainResult,
+  type FlowResult,
   type GraphResult,
+  type ImpactResult,
   type IndexStatus,
   type InitializeResult,
   type ScoredNode,
@@ -14,13 +16,16 @@ import { resolveConfig } from './config.js';
 import { GraphStore, type Direction } from './db/store.js';
 import { buildProvider, type EmbeddingProvider } from './embed/index.js';
 import { buildLlmProvider, type LlmProvider } from './llm/index.js';
+import { FlowTracer } from './flow/tracer.js';
+import { GitChurn } from './impact/git.js';
+import { ImpactEngine } from './impact/engine.js';
 import { Indexer } from './indexer.js';
 import { Watcher } from './watcher/index.js';
 import { log } from './log.js';
 import { Summarizer } from './synth/summarizer.js';
 import { Explainer } from './synth/explainer.js';
 
-const DAEMON_VERSION = '0.3.0';
+const DAEMON_VERSION = '0.5.0';
 
 interface DaemonState {
   store?: GraphStore;
@@ -30,6 +35,9 @@ interface DaemonState {
   llm: LlmProvider | null;
   summarizer?: Summarizer;
   explainer?: Explainer;
+  churn?: GitChurn;
+  impact?: ImpactEngine;
+  flow?: FlowTracer;
   status: IndexStatus;
   initialized: boolean;
 }
@@ -138,6 +146,19 @@ const ExplainSchema = z.object({
   query: z.string().min(1),
   k: z.number().int().positive().max(50).optional(),
   expandDepth: z.number().int().min(0).max(3).optional(),
+});
+
+const AnalyzeImpactSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+  maxDepth: z.number().int().positive().max(10).optional(),
+  cap: z.number().int().positive().max(10000).optional(),
+});
+
+const TraceFlowSchema = z.object({
+  id: z.string().min(1),
+  direction: z.enum(['callees', 'callers']).optional(),
+  maxDepth: z.number().int().positive().max(10).optional(),
+  cap: z.number().int().positive().max(1000).optional(),
 });
 
 const IdSchema = z.object({ id: z.string().min(1) });
@@ -265,6 +286,10 @@ conn.onRequest(RPC.initialize, async (raw: unknown): Promise<InitializeResult> =
     state.llm,
     state.provider,
   );
+  state.churn = new GitChurn(cfg.workspaceRoot, 30);
+  void state.churn.refresh();
+  state.impact = new ImpactEngine(state.store, state.churn);
+  state.flow = new FlowTracer(state.store);
   state.watcher = new Watcher(cfg.workspaceRoot, async (events) => {
     const work = await state.indexer!.applyStructural(events);
     for (const w of work) {
@@ -344,6 +369,25 @@ conn.onRequest(RPC.explain, async (raw: unknown): Promise<ExplainResult> => {
   return state.explainer.explain(params.query, {
     k: params.k,
     expandDepth: params.expandDepth,
+  });
+});
+
+conn.onRequest(RPC.analyzeImpact, async (raw: unknown): Promise<ImpactResult> => {
+  const params = AnalyzeImpactSchema.parse(raw);
+  if (!state.impact) throw new Error('not initialized');
+  return state.impact.analyze(params.ids, {
+    maxDepth: params.maxDepth,
+    cap: params.cap,
+  });
+});
+
+conn.onRequest(RPC.traceFlow, async (raw: unknown): Promise<FlowResult> => {
+  const params = TraceFlowSchema.parse(raw);
+  if (!state.flow) throw new Error('not initialized');
+  return state.flow.trace(params.id, {
+    direction: params.direction,
+    maxDepth: params.maxDepth,
+    cap: params.cap,
   });
 });
 

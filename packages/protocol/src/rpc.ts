@@ -20,6 +20,8 @@ export const RPC = {
   getNeighbors: 'cil/getNeighbors',
   searchSymbols: 'cil/searchSymbols',
   explain: 'cil/explain',
+  analyzeImpact: 'cil/analyzeImpact',
+  traceFlow: 'cil/traceFlow',
   // notifications (server -> client)
   statusChanged: 'cil/statusChanged',
   indexProgress: 'cil/indexProgress',
@@ -123,6 +125,57 @@ export interface ExplainResult {
   /** Indices the model produced that don't map to evidence — possible hallucination. */
   invalidCitations: number[];
   modelUsed: string;
+}
+
+export interface AnalyzeImpactParams {
+  /** One or more seed node IDs (typically symbols you're about to change). */
+  ids: string[];
+  /** Closure depth along forward edges. Default 5. */
+  maxDepth?: number;
+  /** Hard cap on closure size. Default 2000. */
+  cap?: number;
+}
+
+export interface AffectedNode {
+  node: GraphNode;
+  distance: number;
+  directCallers: number;
+  crossFileCallers: number;
+  fileChurn: number;
+  riskScore: number;
+}
+
+export interface ImpactResult {
+  seeds: GraphNode[];
+  affected: AffectedNode[];
+  edges: GraphEdge[];
+  maxDepth: number;
+  churnAvailable: boolean;
+}
+
+export type FlowDirection = 'callees' | 'callers';
+
+export interface TraceFlowParams {
+  id: string;
+  direction?: FlowDirection;
+  maxDepth?: number;
+  cap?: number;
+}
+
+export interface FlowStep {
+  index: number;
+  depth: number;
+  node: GraphNode;
+  parentIndex: number | null;
+  via: GraphEdge | null;
+}
+
+export interface FlowResult {
+  seed: GraphNode | null;
+  direction: FlowDirection;
+  maxDepth: number;
+  steps: FlowStep[];
+  truncated: boolean;
 }
 
 /** Edges + the nodes incident to them (denormalized for client convenience). */

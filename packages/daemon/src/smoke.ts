@@ -16,8 +16,10 @@ import {
 import {
   RPC,
   type ExplainResult,
+  type FlowResult,
   type GraphNode,
   type GraphResult,
+  type ImpactResult,
   type IndexStatus,
   type InitializeResult,
   type ScoredNode,
@@ -180,6 +182,43 @@ const main = async () => {
     process.stdout.write(
       `citations: ${r.citations.length} valid=${r.citations.filter((c) => c.valid).length} invalid=[${r.invalidCitations.join(',')}]\n`,
     );
+  }
+
+  // Impact analysis on a high-traffic node (parseFile)
+  if (parseFile) {
+    const impact = (await conn.sendRequest(RPC.analyzeImpact, {
+      ids: [parseFile.id],
+      maxDepth: 5,
+    })) as ImpactResult;
+    process.stdout.write(`\n=== impact: changing parseFile ===\n`);
+    process.stdout.write(
+      `seeds: ${impact.seeds.length} | affected: ${impact.affected.length} | churn data: ${impact.churnAvailable ? 'yes' : 'no'}\n`,
+    );
+    process.stdout.write(`top by risk:\n`);
+    for (const a of impact.affected.slice(0, 8)) {
+      process.stdout.write(
+        `  risk=${a.riskScore.toFixed(2)} d=${a.distance} callers=${a.directCallers} cross-file=${a.crossFileCallers} churn=${a.fileChurn}  ${fmt(a.node)}\n`,
+      );
+    }
+  }
+
+  // Flow trace from a top-level entry (Indexer.runInitialScan callees)
+  if (runInitialScan) {
+    const flow = (await conn.sendRequest(RPC.traceFlow, {
+      id: runInitialScan.id,
+      direction: 'callees',
+      maxDepth: 4,
+    })) as FlowResult;
+    process.stdout.write(
+      `\n=== flow trace: callees of Indexer.runInitialScan ===\n`,
+    );
+    process.stdout.write(
+      `seed: ${flow.seed ? fmt(flow.seed) : '(missing)'} | steps: ${flow.steps.length} | truncated: ${flow.truncated}\n`,
+    );
+    for (const s of flow.steps) {
+      const indent = '  '.repeat(s.depth);
+      process.stdout.write(`${indent}[${s.depth}] ${fmt(s.node)}\n`);
+    }
   }
 
   await conn.sendRequest(RPC.shutdown, {});

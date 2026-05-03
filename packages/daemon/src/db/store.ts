@@ -243,6 +243,42 @@ export class GraphStore {
     return rows.map(rowToNode);
   }
 
+  /** Forward/reverse BFS along selected edge kinds. Returns first-seen depth
+   *  per visited node. Used by impact analysis (out, calls/extends/...)
+   *  and flow tracing. Caps total visits to prevent runaway. */
+  transitiveClosure(
+    seeds: readonly string[],
+    edgeKinds: readonly EdgeKind[],
+    direction: Direction,
+    maxDepth: number,
+    cap = 5000,
+  ): { depths: Map<string, number>; edges: GraphEdge[] } {
+    const depths = new Map<string, number>();
+    const collectedEdges = new Map<string, GraphEdge>();
+    for (const s of seeds) depths.set(s, 0);
+    let frontier: string[] = [...seeds];
+
+    for (let d = 0; d < maxDepth && frontier.length > 0; d++) {
+      const next = new Set<string>();
+      for (const id of frontier) {
+        for (const kind of edgeKinds) {
+          const edges = this.edgesFor(id, direction, kind);
+          for (const e of edges) {
+            collectedEdges.set(e.id, e);
+            const other = e.src === id ? e.dst : e.src;
+            if (!depths.has(other) && depths.size < cap) {
+              depths.set(other, d + 1);
+              next.add(other);
+            }
+          }
+        }
+      }
+      frontier = [...next];
+    }
+
+    return { depths, edges: [...collectedEdges.values()] };
+  }
+
   /** k-hop subgraph around a seed. Hard cap on visited nodes to prevent runaway. */
   neighborhood(
     seed: string,
